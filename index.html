@@ -1,0 +1,232 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scanner Absensi - SMAN 1 Siberut Tengah</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+
+    .container {
+      max-width: 520px;
+      margin: 30px auto;
+      background: white;
+      padding: 25px;
+      border-radius: 18px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.08);
+      text-align: center;
+    }
+
+    h2 { color: #17365d; margin-bottom: 8px; }
+
+    .subtitle {
+      color: #64748b;
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+
+    #reader {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 10px;
+      padding: 15px;
+      margin-top: 15px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #startBtn {
+      background: #17365d;
+      color: white;
+    }
+
+    #stopBtn {
+      background: #e2e8f0;
+      color: #334155;
+    }
+
+    #status {
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 10px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .footer {
+      margin-top: 25px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+
+    <h2>SCANNER ABSENSI</h2>
+
+    <div class="subtitle">
+      SMAN 1 SIBERUT TENGAH
+      <br>
+      Arahkan kamera ke QR Code kartu murid
+    </div>
+
+    <div id="reader"></div>
+
+    <button id="startBtn" onclick="startScanner()">
+      BUKA KAMERA
+    </button>
+
+    <button id="stopBtn" onclick="stopScanner()" hidden>
+      HENTIKAN KAMERA
+    </button>
+
+    <div id="status">
+      Silakan tekan tombol BUKA KAMERA.
+    </div>
+
+    <div class="footer">
+      Sistem Absensi Digital
+      <br>
+      SMAN 1 Siberut Tengah
+    </div>
+
+  </div>
+
+  <script>
+    let scanner = null;
+    let scanning = false;
+    let processing = false;
+
+    const statusBox = document.getElementById("status");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+
+    function showStatus(message) {
+      statusBox.textContent = message;
+    }
+
+    async function startScanner() {
+      if (scanning) return;
+
+      try {
+        if (!window.isSecureContext) {
+          showStatus("Scanner harus dibuka melalui HTTPS.");
+          return;
+        }
+
+        scanner = new Html5Qrcode("reader");
+
+        const cameras = await Html5Qrcode.getCameras();
+
+        if (!cameras || cameras.length === 0) {
+          showStatus("Kamera tidak ditemukan.");
+          return;
+        }
+
+        let cameraId = cameras[0].id;
+
+        const backCamera = cameras.find(camera =>
+          /back|rear|environment/i.test(camera.label)
+        );
+
+        if (backCamera) {
+          cameraId = backCamera.id;
+        }
+
+        await scanner.start(
+          cameraId,
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1
+          },
+          onScanSuccess,
+          () => {}
+        );
+
+        scanning = true;
+        startBtn.hidden = true;
+        stopBtn.hidden = false;
+
+        showStatus("Kamera aktif. Silakan pindai QR Code murid.");
+
+      } catch (error) {
+        showStatus("Kamera gagal dibuka: " + error.message);
+      }
+    }
+
+    async function onScanSuccess(decodedText) {
+      if (processing) return;
+
+      processing = true;
+
+      showStatus("QR Code berhasil dibaca. Mengirim data absensi...");
+
+      try {
+        await scanner.stop();
+        scanning = false;
+
+        if (window.opener && !window.opener.closed) {
+
+          window.opener.postMessage({
+            type: "ABSENSI_QR_SCAN",
+            qrValue: decodedText
+          }, "*");
+
+          showStatus("QR Code berhasil dikirim ke aplikasi absensi.");
+
+          setTimeout(() => window.close(), 1200);
+
+        } else {
+          showStatus(
+            "Aplikasi absensi tidak ditemukan. " +
+            "Silakan buka scanner melalui tombol di aplikasi absensi."
+          );
+          processing = false;
+        }
+
+      } catch (error) {
+        showStatus("Gagal mengirim hasil scan: " + error.message);
+        processing = false;
+      }
+    }
+
+    async function stopScanner() {
+      if (scanner && scanning) {
+        await scanner.stop();
+        scanning = false;
+      }
+
+      startBtn.hidden = false;
+      stopBtn.hidden = true;
+
+      showStatus("Kamera dihentikan.");
+    }
+  </script>
+
+</body>
+</html>
