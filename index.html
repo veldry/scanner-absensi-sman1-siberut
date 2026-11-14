@@ -120,6 +120,8 @@
     let scanner = null;
     let scanning = false;
     let processing = false;
+    let lastScannedText = '';
+    let lastScannedTime = 0;
 
     const statusBox = document.getElementById("status");
     const startBtn = document.getElementById("startBtn");
@@ -179,41 +181,68 @@
       }
     }
 
-    async function onScanSuccess(decodedText) {
-      if (processing) return;
+    
+async function onScanSuccess(decodedText) {
 
-      processing = true;
+  if (processing) return;
 
-      showStatus("QR Code berhasil dibaca. Mengirim data absensi...");
+  // Mencegah QR yang sama dikirim berulang kali
+  // dalam waktu 3 detik
+  const now = Date.now();
 
-      try {
-        await scanner.stop();
-        scanning = false;
+  if (
+    decodedText === lastScannedText &&
+    now - lastScannedTime < 3000
+  ) {
+    return;
+  }
 
-        if (window.opener && !window.opener.closed) {
+  processing = true;
+  lastScannedText = decodedText;
+  lastScannedTime = now;
 
-          window.opener.postMessage({
-            type: "ABSENSI_QR_SCAN",
-            qrValue: decodedText
-          }, "*");
+  showStatus(
+    "QR Code terbaca. Mengirim data absensi..."
+  );
 
-          showStatus("QR Code berhasil dikirim ke aplikasi absensi.");
+  try {
 
-          setTimeout(() => window.close(), 1200);
+    if (window.opener && !window.opener.closed) {
 
-        } else {
-          showStatus(
-            "Aplikasi absensi tidak ditemukan. " +
-            "Silakan buka scanner melalui tombol di aplikasi absensi."
-          );
-          processing = false;
-        }
+      window.opener.postMessage({
+        type: "ABSENSI_QR_SCAN",
+        qrValue: decodedText
+      }, "*");
 
-      } catch (error) {
-        showStatus("Gagal mengirim hasil scan: " + error.message);
-        processing = false;
-      }
+      showStatus(
+        "QR berhasil dikirim. Silakan pindai murid berikutnya."
+      );
+
+    } else {
+
+      showStatus(
+        "Aplikasi absensi tidak terhubung. " +
+        "Silakan buka scanner melalui aplikasi absensi."
+      );
+
     }
+
+  } catch (error) {
+
+    showStatus(
+      "Gagal mengirim hasil scan: " + error.message
+    );
+
+  }
+
+  // Kamera tetap menyala.
+  // Scanner siap menerima QR berikutnya.
+  setTimeout(() => {
+    processing = false;
+  }, 1200);
+
+}
+
 
     async function stopScanner() {
       if (scanner && scanning) {
